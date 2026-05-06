@@ -1,0 +1,51 @@
+# =========================
+# SPRING BOOT BACKEND
+# =========================
+
+SEWA/HELP.md
+SEWA/target/
+SEWA/.env
+
+# Maven wrapper jar
+SEWA/.mvn/wrapper/maven-wrapper.jar
+
+# Allow nested target folders if needed
+!SEWA/src/main/**/target/
+!SEWA/src/test/**/target/
+
+# IntelliJ
+SEWA/.idea/
+SEWA/*.iws
+SEWA/*.iml
+SEWA/*.ipr
+
+
+# =========================
+# REACT FRONTEND
+# =========================
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+
+
+# =========================
+# PYTHON SIMULATOR
+# =========================
+
+ICU vitals simulater/.idea/
+ICU vitals simulater/.venv/
+ICU vitals simulater/data/Dataset.csv
+
+# Optional Python ignores
+ICU vitals simulater/__pycache__/
+ICU vitals simulater/*.pyc
+
+
+# =========================
+# GENERAL
+# =========================
+
+.DS_Store
+Thumbs.db
