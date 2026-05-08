@@ -10,7 +10,7 @@ public class PatientRequest {
     private String name;
     private String phoneNumber;
     private String bedNumber;
-    private String fhirPatientId;   // optional — set if known from FHIR
+    private String fhirPatientId;
     private Status status;
 
     // Details

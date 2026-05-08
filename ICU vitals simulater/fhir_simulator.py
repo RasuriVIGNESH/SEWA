@@ -1,12 +1,30 @@
+import sys
 import pandas as pd
 import requests
 import time
+import os
 import itertools
 from datetime import datetime, timedelta
 
-FHIR_BASE = "http://localhost:8081/fhir"
+FHIR_BASE = os.getenv("FHIR_BASE_URL")
 PATIENT_URL = f"{FHIR_BASE}/Patient"
 OBSERVATION_URL = f"{FHIR_BASE}/Observation"
+
+# ── FHIR HEALTH CHECK ───────────────────────────────────────
+def check_fhir_server():
+    try:
+        res = requests.get(f"{FHIR_BASE}/metadata", timeout=5)
+        if res.status_code == 200:
+            print("FHIR server detected ✅\n")
+            return
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        pass
+    print(f"FHIR server not running on {FHIR_BASE}")
+    print(f"FHIR server not running on {FHIR_BASE}")
+    print("Start FHIR server with: docker-compose up -d")
+    sys.exit(0)
+
+check_fhir_server()
 
 # ── LOINC codes ─────────────────────────────────────────────
 VITAL_CODES = {
@@ -95,7 +113,7 @@ patient_streams = {
 }
 
 start_time = datetime.now()
-print("Streaming vitals (infinite loop)...\n")
+print("Streaming vitals...\n")
 
 # ── INFINITE LOOP ───────────────────────────────────────────
 while True:
@@ -122,4 +140,4 @@ while True:
         else:
             print(f"❌ P{pid} failed")
 
-    time.sleep(2)   
+    time.sleep(5)

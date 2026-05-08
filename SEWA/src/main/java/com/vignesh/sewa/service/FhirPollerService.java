@@ -32,7 +32,22 @@ public class FhirPollerService implements iPoolerService {
     private final Map<String, Patient> activePatientCache = new ConcurrentHashMap<>();
 
     private final Set<String> processedIds = Collections.synchronizedSet(new HashSet<>());
-    private Instant lastPollTime = Instant.now().minusSeconds(10);
+
+    private static final String LAST_POLL_FILE = "last_poll_time.txt";
+    private Instant lastPollTime = loadLastPollTime();
+
+    private Instant loadLastPollTime() {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(LAST_POLL_FILE);
+            if (java.nio.file.Files.exists(path)) {
+                String content = java.nio.file.Files.readString(path).trim();
+                return Instant.parse(content);
+            }
+        } catch (Exception e) {
+            log.warn("Could not read last poll time, defaulting to 3s ago");
+        }
+        return Instant.now().minusSeconds(3);
+    }
 
     // ── POLL ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +86,14 @@ public class FhirPollerService implements iPoolerService {
                 log.debug("Broadcast → patient={} bed={}", fhirPatientId, dto.getBedNumber());
             }
             lastPollTime = pollStart;
+            try {
+                java.nio.file.Files.writeString(
+                        java.nio.file.Paths.get(LAST_POLL_FILE),
+                        lastPollTime.toString()
+                );
+            } catch (Exception e) {
+                log.warn("Could not persist last poll time");
+            }
 
         } catch (Exception e) {
 //            log.error("FHIR poll error", e);
