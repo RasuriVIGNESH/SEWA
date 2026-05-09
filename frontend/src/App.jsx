@@ -14,11 +14,19 @@ import MyPatientDetails from './pages/MyPatientDetails';
 import DoctorDetail from './pages/DoctorDetail';
 import Alerts from './pages/Alerts';
 
-const queryClient = new QueryClient();
+// FIX (Point 16): Global Query Configuration
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30000,           // Data stays "fresh" for 30s
+      retry: 1,                   // Only retry failed requests once
+      refetchOnWindowFocus: false // Don't refetch every time doctor switches browser tabs
+    }
+  }
+});
 
 function PublicRoute({ children }) {
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-  // If user is already logged in and tries to go to login/register, send them to dashboard
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <>{children}</>;
 }
 
@@ -28,19 +36,17 @@ export default function App() {
       <BrowserRouter>
         <Toaster
           position="top-right"
-          toastOptions={{ className: 'font-sans' }}
+          toastOptions={{
+            className: 'font-sans font-bold text-sm',
+            duration: 4000
+          }}
         />
         <Routes>
-          {/* 1. Landing Page (Available to everyone) */}
           <Route path="/" element={<Landing />} />
-
-          {/* 2. Auth Routes (Only available if NOT logged in) */}
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-          {/* 3. Private Routes (Require Login) */}
           <Route element={<PrivateRoute />}>
-            {/* When a user logs in, they go here */}
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/patients/:id" element={<PatientDetail />} />
@@ -50,7 +56,6 @@ export default function App() {
             <Route path="/mypatient/:id" element={<MyPatientDetails />} />
           </Route>
 
-          {/* 4. Catch-all: redirect any unknown routes to Landing */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

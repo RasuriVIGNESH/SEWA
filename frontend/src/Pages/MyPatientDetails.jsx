@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { StatusBadge } from '../components/StatusBadge';
 import { VitalMetrics } from '../components/VitalMetrics';
 import { useVitalsWS } from '../hooks/useVitalsWS';
-import { useMemo } from 'react'
 
 import {
     Loader2,
@@ -15,11 +14,8 @@ import {
     ChevronLeft,
     AlertCircle,
     FileText,
-    Thermometer,
     ShieldCheck,
-    Smartphone,
     MapPin,
-    Calendar,
     Hash,
     Droplets,
     Phone,
@@ -27,7 +23,6 @@ import {
     Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatRelativeTime } from '../lib/formatters';
 
 export default function MyPatientDetails() {
     const { id } = useParams();
@@ -52,13 +47,10 @@ export default function MyPatientDetails() {
     // 1. Fetch Patient Data
     const { data: patient, isLoading, isError } = useQuery({
         queryKey: ['patient', id],
-        queryFn: async () => {
-            const res = await api.get(`/patients/${id}`);
-            return res.data;
-        }
+        queryFn: async () => (await api.get(`/patients/${id}`)).data
     });
 
-    // 2. Sync Form State when patient data arrives
+    // 2. Sync Form State
     useEffect(() => {
         if (patient) {
             setEditForm({
@@ -75,18 +67,13 @@ export default function MyPatientDetails() {
                 medicalHistory: patient.medicalHistory || ''
             });
         }
-    }, [patient]); // This is safe now because of the check inside
+    }, [patient]);
 
     // 3. Vitals WebSocket Logic
-    // WITH
-    const fhirIds = useMemo(() => patient?.fhirPatientId ? [patient.fhirPatientId] : [], [patient?.fhirPatientId]);
-    const vitalsMap = useVitalsWS(fhirIds);
+    // Passing full patient object in array to enable rich alerts in the hook
+    const patientList = useMemo(() => patient ? [patient] : [], [patient]);
+    const vitalsMap = useVitalsWS(patientList);
     const vitals = patient?.fhirPatientId ? vitalsMap[patient.fhirPatientId] : null;
-
-    //debugging logs
-    console.log("FHIR ID:", patient?.fhirPatientId);
-    console.log("Vitals Map:", vitalsMap);
-    console.log("Resolved Vitals:", vitals);
 
     // 4. Mutations
     const updateMutation = useMutation({
@@ -97,7 +84,8 @@ export default function MyPatientDetails() {
             toast.success('Record Updated');
             queryClient.invalidateQueries({ queryKey: ['patient', id] });
             setIsEditing(false);
-        }
+        },
+        onError: () => toast.error('Failed to update record')
     });
 
     const dischargeMutation = useMutation({
@@ -105,18 +93,16 @@ export default function MyPatientDetails() {
         onSuccess: () => {
             toast.success('Patient Discharged');
             navigate('/');
-        }
+        },
+        onError: () => toast.error('Discharge failed')
     });
 
-    // --- SAFETY CHECKS ---
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
                 <div className="flex flex-col items-center gap-4">
                     <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
-                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest text-center">
-                        Establishing Secure Link...
-                    </p>
+                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Establishing Clinical Link...</p>
                 </div>
             </div>
         );
@@ -128,8 +114,7 @@ export default function MyPatientDetails() {
                 <div className="text-center p-8 bg-white rounded-[2rem] shadow-xl border border-slate-100">
                     <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
                     <h2 className="text-xl font-black text-slate-900">Record Not Found</h2>
-                    <p className="text-slate-500 mb-6">The patient record could not be retrieved from the clinical server.</p>
-                    <button onClick={() => navigate('/')} className="px-6 py-2 bg-slate-900 text-white rounded-xl font-bold text-sm">
+                    <button onClick={() => navigate('/')} className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl font-bold text-sm">
                         Return to Dashboard
                     </button>
                 </div>
@@ -137,25 +122,23 @@ export default function MyPatientDetails() {
         );
     }
 
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setEditForm(prev => ({ ...prev, [name]: value }));
-    };
+    const handleInputChange = (e) => setEditForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-20 font-sans">
-            {/* HEADER NAV */}
             <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 px-6 py-4">
                 <div className="max-w-[1600px] mx-auto flex justify-between items-center">
-                    <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 font-bold text-sm transition-colors group">
-                        <div className="p-2 group-hover:bg-blue-50 rounded-xl transition-colors"><ChevronLeft size={20} /></div>
+                    <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-blue-600 font-bold text-sm transition-all group">
+                        <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
                         Back to Ward
                     </button>
 
                     <div className="flex items-center gap-3">
-                        <button onClick={() => confirm('Confirm discharge?') && dischargeMutation.mutate()} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 rounded-xl font-bold text-xs transition-all shadow-sm">
-                            <FileOutput size={16} /> Discharge
-                        </button>
+                        {patient.status !== 'DISCHARGED' && (
+                            <button onClick={() => confirm('Confirm patient discharge?') && dischargeMutation.mutate()} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-red-600 rounded-xl font-bold text-xs transition-all shadow-sm">
+                                <FileOutput size={16} /> Discharge
+                            </button>
+                        )}
                         <button
                             onClick={() => isEditing ? updateMutation.mutate() : setIsEditing(true)}
                             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md ${isEditing ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white'}`}
@@ -167,7 +150,6 @@ export default function MyPatientDetails() {
             </nav>
 
             <div className="max-w-[1600px] mx-auto p-6 lg:p-10">
-                {/* PATIENT IDENTITY SECTION */}
                 <header className="mb-10 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
                     <div className="flex items-center gap-8">
                         <div className="w-24 h-24 bg-white rounded-[2rem] shadow-xl border border-slate-100 flex items-center justify-center text-blue-600 relative">
@@ -178,54 +160,49 @@ export default function MyPatientDetails() {
                             <div className="flex items-center gap-4 mb-2">
                                 <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">
                                     {isEditing ? (
-                                        <input name="name" value={editForm.name} onChange={handleInputChange} className="bg-white border border-slate-200 rounded-lg px-3 py-1 text-3xl outline-none ring-2 ring-blue-500/20" />
+                                        <input name="name" value={editForm.name} onChange={handleInputChange} className="bg-white border-b-2 border-blue-500 outline-none text-4xl font-black" />
                                     ) : patient.name}
                                 </h1>
                                 <StatusBadge status={patient.status} />
                             </div>
                             <div className="flex items-center gap-6 text-sm font-bold">
-                                <span className="flex items-center gap-2 text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">Bed {patient.bedNumber}</span>
-                                <span className="text-slate-400 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Clock size={16} /> Admitted {patient.admissionDate || 'N/A'}</span>
+                                <span className="flex items-center gap-2 text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">Bed {patient.bedNumber || 'TBA'}</span>
+                                <span className="text-slate-400 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Clock size={16} /> Admitted: {patient.admissionDate || 'N/A'}</span>
                             </div>
                         </div>
                     </div>
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                    {/* VITALS MONITOR (LEFT) */}
                     <div className="lg:col-span-7 space-y-10">
-                        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-2xl shadow-slate-200/40 overflow-hidden">
+                        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-2xl overflow-hidden">
                             <div className="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/40">
-                                <div className="flex items-center gap-4">
-                                    <div className="relative flex h-4 w-4">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-600"></span>
-                                    </div>
-                                    <h3 className="font-black text-slate-900 uppercase tracking-tighter text-sm">Real-Time Clinical Feed</h3>
-                                </div>
+                                <h3 className="font-black text-slate-900 uppercase tracking-tighter text-sm flex items-center gap-3">
+                                    <Activity size={18} className="text-blue-600" /> Bedside Monitoring
+                                </h3>
+                                {vitals && <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded">LIVE FEED</span>}
                             </div>
                             <div className="p-10">
                                 {vitals ? <VitalMetrics vitals={vitals} size="lg" /> : (
                                     <div className="py-24 text-center bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-[2.5rem]">
                                         <Activity className="mx-auto text-slate-200 mb-6 animate-pulse" size={64} />
-                                        <p className="text-slate-900 text-xl font-bold tracking-tight">Syncing with Bedside Monitor...</p>
+                                        <p className="text-slate-900 text-xl font-bold tracking-tight">Waiting for Bedside Stream...</p>
                                     </div>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    {/* CLINICAL DATA (RIGHT) */}
                     <div className="lg:col-span-5 space-y-8">
                         <div className="bg-white rounded-[3rem] border border-slate-200 p-10 shadow-sm">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8">Patient Parameters</h3>
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8">Clinical Details</h3>
                             <div className="grid grid-cols-2 gap-x-8 gap-y-6">
                                 <EditableItem label="Gender" name="gender" value={editForm.gender} isEditing={isEditing} onChange={handleInputChange} />
-                                <EditableItem label="Blood" name="bloodGroup" value={editForm.bloodGroup} icon={Droplets} isEditing={isEditing} onChange={handleInputChange} />
-                                <EditableItem label="Phone" name="phoneNumber" value={editForm.phoneNumber} icon={Phone} isEditing={isEditing} onChange={handleInputChange} />
-                                <EditableItem label="FHIR ID" name="fhirPatientId" value={editForm.fhirPatientId} icon={Hash} isEditing={isEditing} onChange={handleInputChange} />
+                                <EditableItem label="Blood Type" name="bloodGroup" value={editForm.bloodGroup} icon={Droplets} isEditing={isEditing} onChange={handleInputChange} />
+                                <EditableItem label="Contact" name="phoneNumber" value={editForm.phoneNumber} icon={Phone} isEditing={isEditing} onChange={handleInputChange} />
+                                <EditableItem label="FHIR Patient ID" name="fhirPatientId" value={editForm.fhirPatientId} icon={Hash} isEditing={isEditing} onChange={handleInputChange} />
                                 <div className="col-span-2">
-                                    <EditableItem label="Full Address" name="address" value={editForm.address} icon={MapPin} isEditing={isEditing} onChange={handleInputChange} />
+                                    <EditableItem label="Address" name="address" value={editForm.address} icon={MapPin} isEditing={isEditing} onChange={handleInputChange} />
                                 </div>
                             </div>
 
@@ -233,8 +210,14 @@ export default function MyPatientDetails() {
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Admission Reason</label>
                                     {isEditing ? (
-                                        <textarea name="admissionReason" value={editForm.admissionReason} onChange={handleInputChange} rows="3" className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-                                    ) : <p className="text-slate-700 text-sm leading-relaxed">{patient.admissionReason || 'No notes.'}</p>}
+                                        <textarea name="admissionReason" value={editForm.admissionReason} onChange={handleInputChange} rows="3" className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm outline-none" />
+                                    ) : <p className="text-slate-700 text-sm leading-relaxed font-medium">{patient.admissionReason || 'Not documented.'}</p>}
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Medical History</label>
+                                    {isEditing ? (
+                                        <textarea name="medicalHistory" value={editForm.medicalHistory} onChange={handleInputChange} rows="3" className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm outline-none" />
+                                    ) : <p className="text-slate-700 text-sm leading-relaxed font-medium">{patient.medicalHistory || 'No historical data available.'}</p>}
                                 </div>
                             </div>
                         </div>
@@ -252,7 +235,7 @@ function EditableItem({ label, name, value, isEditing, onChange, icon: Icon }) {
                 {Icon && <Icon size={12} className="text-blue-500" />} {label}
             </span>
             {isEditing ? (
-                <input name={name} value={value} onChange={onChange} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold text-slate-900 outline-none" />
+                <input name={name} value={value} onChange={onChange} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20" />
             ) : (
                 <p className="text-sm font-bold text-slate-800">{value || '--'}</p>
             )}

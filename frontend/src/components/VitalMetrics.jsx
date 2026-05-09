@@ -2,7 +2,6 @@ import { Activity, Wind, Droplets, Thermometer, Zap } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useEffect, useState } from 'react';
 
-// Animation hook for the heart rate pulse
 function usePulse(value) {
   const [pulse, setPulse] = useState(false);
   useEffect(() => {
@@ -34,7 +33,7 @@ export function VitalMetrics({ vitals, className, size = 'sm' }) {
       label: 'MAP',
       value: vitals.meanArterialPressure?.toFixed(0),
       unit: 'mmHg',
-      icon: Zap, // Changed to Zap for "Pressure/Energy" feel
+      icon: Zap,
       isWarn: vitals.meanArterialPressure < 65,
       isCrit: vitals.meanArterialPressure < 55
     },
@@ -49,7 +48,8 @@ export function VitalMetrics({ vitals, className, size = 'sm' }) {
   ];
 
   const secondaryMetrics = [
-    { label: 'SpO₂', value: vitals.spO2, unit: '%', isWarn: vitals.spO2 < 92 },
+    // FIXED: spo2 instead of spO2 to match backend DTO
+    { label: 'SpO₂', value: vitals.spo2, unit: '%', isWarn: vitals.spo2 < 92 },
     { label: 'TEMP', value: vitals.temperature?.toFixed(1), unit: '°C' },
     {
       label: 'BP',
@@ -60,7 +60,6 @@ export function VitalMetrics({ vitals, className, size = 'sm' }) {
 
   return (
     <div className={cn("space-y-6", className)}>
-      {/* PRIMARY GRID (Big Numbers) */}
       <div className={cn("grid grid-cols-3 gap-3", isLarge ? "gap-6" : "gap-3")}>
         {primaryMetrics.map((m, i) => {
           const statusClass = m.isCrit
@@ -74,16 +73,13 @@ export function VitalMetrics({ vitals, className, size = 'sm' }) {
               "p-4 rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden shadow-sm",
               statusClass
             )}>
-              {/* Subtle pulsing background for HR */}
               {m.label === 'HR' && hrPulse && (
                 <div className="absolute inset-0 bg-blue-500/5 animate-pulse" />
               )}
-
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{m.label}</span>
                 <m.icon size={14} className={cn("opacity-40", m.isCrit && "animate-bounce")} />
               </div>
-
               <div className="flex items-baseline gap-1 relative z-10">
                 <span className={cn(
                   "font-black tracking-tighter leading-none transition-transform duration-300",
@@ -99,7 +95,6 @@ export function VitalMetrics({ vitals, className, size = 'sm' }) {
         })}
       </div>
 
-      {/* SECONDARY STRIP (Detailed readings) */}
       <div className={cn(
         "grid grid-cols-3 pt-6 border-t border-slate-100",
         isLarge ? "gap-8" : "gap-4"

@@ -1,6 +1,13 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware'; // Import this to save data on refresh
+import { persist, createJSONStorage } from 'zustand/middleware';
 
+
+
+/**
+ * AUTH STORE
+ * Uses sessionStorage: Survives page refresh (F5), but logs out when tab is closed.
+ * This is the secure middle-ground for medical applications.
+ */
 export const useAuthStore = create(
   persist(
     (set) => ({
@@ -23,16 +30,43 @@ export const useAuthStore = create(
           doctorId: null,
           isAuthenticated: false
         });
-        // Optional: Clear storage on logout
-        localStorage.removeItem('sewa-auth-storage');
+        // Clear session storage manually on logout to be safe
+        sessionStorage.removeItem('sewa-auth-session');
       }
     }),
     {
-      name: 'sewa-auth-storage', // The key in localStorage
+      name: 'sewa-auth-session',
+      storage: createJSONStorage(() => sessionStorage), // Fixes the "logout on refresh" issue
     }
   )
 );
 
+export const useVitalsStore = create(
+  persist(
+    (set) => ({
+      vitals: {}, // Key: fhirPatientId, Value: Vitals DTO
+
+      updateVitals: (fhirId, data) => set((state) => ({
+        vitals: {
+          ...state.vitals,
+          [fhirId]: data
+        }
+      })),
+
+      clearVitals: () => set({ vitals: {} })
+    }),
+    {
+      name: 'sewa-vitals-cache',
+      storage: createJSONStorage(() => sessionStorage),
+    }
+  )
+);
+
+/**
+ * ALERT STORE
+ * Uses localStorage: Persists alerts even if the browser is closed.
+ * Includes a performance cap of 50 alerts.
+ */
 export const useAlertStore = create(
   persist(
     (set) => ({
@@ -40,14 +74,20 @@ export const useAlertStore = create(
       alerts: [],
 
       addAlert: (alertData) => set((state) => {
+        // Prevent duplicate alerts for the same patient within a short window if needed,
+        // but here we just add the alert with a unique ID.
         const newAlert = {
           ...alertData,
-          id: Math.random().toString(36).substring(7),
+          id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
           read: false
         };
+
+        // PERFORMANCE FIX: Keep only the most recent 50 alerts
+        const updatedAlerts = [newAlert, ...state.alerts].slice(0, 50);
+
         return {
-          alerts: [newAlert, ...state.alerts],
+          alerts: updatedAlerts,
           unreadCount: state.unreadCount + 1
         };
       }),
@@ -67,7 +107,7 @@ export const useAlertStore = create(
       }))
     }),
     {
-      name: 'sewa-alerts-storage', // Keep alerts even if page refreshes
+      name: 'sewa-alerts-storage', // Defaults to localStorage
     }
   )
-);
+); 
