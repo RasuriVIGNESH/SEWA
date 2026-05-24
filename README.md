@@ -32,7 +32,8 @@ Sepsis kills ~11 million people annually. In ICU settings, every hour of delayed
 
 ## 🏗️ System Architecture and data flow
 
-![alt text](image.png)
+<img width="1680" height="720" alt="design" src="https://github.com/user-attachments/assets/24379aed-a1a6-4946-866d-d59a9135981d" />
+
 
 
 ### Environment Switch
