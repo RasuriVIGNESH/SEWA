@@ -5,23 +5,49 @@
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-background: #0A0F1E;
-  --color-surface: #111827;
-  --color-surface-elevated: #1F2937;
-  --color-border: #1E293B;
+  /* Professional Light Theme - Clinical Grade */
+  --color-background: #FFFFFF;
+  --color-surface: #F9FAFB;
+  --color-surface-elevated: #F3F4F6;
+  --color-border: #E5E7EB;
   
-  --color-accent: #00D4FF;
-  --color-accent-muted: #0EA5E9;
+  --color-accent: #0066CC;
+  --color-accent-muted: #0080FF;
   
-  --color-stable: #10B981;
-  --color-warning: #F59E0B;
-  --color-critical: #EF4444;
+  --color-stable: #059669;
+  --color-warning: #D97706;
+  --color-critical: #DC2626;
   
-  --color-text-primary: #F9FAFB;
-  --color-text-secondary: #9CA3AF;
-  --color-text-muted: #4B5563;
+  --color-text-primary: #111827;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
 }
 
 body {
   @apply bg-background text-text-primary antialiased;
+}
+
+/* Smooth transitions for vital updates */
+@keyframes vitals-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.vitals-updating {
+  animation: vitals-pulse 0.6s ease-in-out;
+}
+
+/* Sparkline animation */
+@keyframes sparkline-draw {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.sparkline-animated {
+  stroke-dasharray: 1000;
+  animation: sparkline-draw 0.8s ease-out forwards;
 }

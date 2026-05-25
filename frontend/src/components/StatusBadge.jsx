@@ -1,13 +1,24 @@
-import React from 'react';
 import { cn } from '../lib/utils';
 import { getStatusColor } from '../lib/formatters';
-export function StatusBadge({
-  status,
-  className
-}) {
-  const normalizedStatus = status.replace(/_/g, ' ');
-  return <span className={cn("px-2.5 py-1 text-xs font-semibold rounded-full border flex items-center gap-1.5", getStatusColor(status), className)}>
-      <span className={cn("w-1.5 h-1.5 rounded-full block", status === 'STABLE' ? 'bg-stable' : '', status === 'WARNING' || status === 'UNDER_OBSERVATION' ? 'bg-warning' : '', status === 'CRITICAL' ? 'bg-critical' : '', status === 'DISCHARGED' ? 'bg-text-secondary' : '')}></span>
-      {normalizedStatus}
-    </span>;
+
+export function StatusBadge({ status, className }) {
+  const colorClass = getStatusColor(status);
+  const displayStatus = status?.replace(/_/g, ' ') || 'Unknown';
+
+  return (
+    <div className={cn(
+      'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border font-bold text-xs uppercase tracking-widest',
+      colorClass,
+      className
+    )}>
+      <span className={cn(
+        'inline-block w-2 h-2 rounded-full',
+        status === 'STABLE' && 'bg-emerald-600',
+        status === 'WARNING' || status === 'UNDER_OBSERVATION' ? 'bg-amber-600' : '',
+        status === 'CRITICAL' && 'bg-red-600',
+        status === 'DISCHARGED' && 'bg-slate-500'
+      )}></span>
+      {displayStatus}
+    </div>
+  );
 }

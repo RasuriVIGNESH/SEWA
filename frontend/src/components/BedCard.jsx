@@ -8,36 +8,44 @@ export function BedCard({ patient, vitals }) {
   const isCritical = patient.status === 'CRITICAL' || vitals?.sepsisLabel === 1;
 
   // CHECK STALENESS: Is this cached data or live?
-  // If data is older than 30s, it's considered "Cached/Stale" while we wait for WS
   const isStale = vitals ? (Date.now() - new Date(vitals.timestamp).getTime()) > 30000 : false;
 
   const cardStyle = isCritical
-    ? "border-red-500 shadow-2xl shadow-red-100 bg-red-50/10 ring-2 ring-red-500/20"
-    : "border-slate-100 bg-white hover:border-blue-200 shadow-sm";
+    ? "border-red-200 shadow-lg shadow-red-100/50 bg-red-50/40 hover:shadow-xl hover:shadow-red-100/60"
+    : "border-slate-200 bg-white hover:border-blue-300 shadow-sm hover:shadow-md";
 
   return (
     <Link
       to={`/mypatient/${patient.id}`}
       className={cn(
-        "group flex flex-col rounded-[2rem] border overflow-hidden transition-all duration-300 hover:-translate-y-1",
+        "group flex flex-col rounded-2xl border overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
         cardStyle,
-        isStale && !isCritical && "opacity-90"
+        isStale && !isCritical && "opacity-85"
       )}
     >
       {/* HEADER */}
       <div className={cn(
         "px-6 py-4 flex justify-between items-start border-b",
-        isCritical ? "border-red-100 bg-red-50/50" : "border-slate-50 bg-slate-50/30"
+        isCritical ? "border-red-100 bg-red-50/60" : "border-slate-100 bg-slate-50/40"
       )}>
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="bg-slate-900 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-widest">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={cn(
+              "text-[10px] font-black px-2.5 py-1 rounded-lg tracking-widest",
+              isCritical ? "bg-red-600 text-white" : "bg-slate-800 text-white"
+            )}>
               BED {patient.bedNumber || 'TBA'}
             </span>
             {vitals && !isStale && (
-              <span className="flex h-2 w-2 relative">
-                <span className={cn("animate-ping absolute h-full w-full rounded-full opacity-75", isCritical ? "bg-red-400" : "bg-blue-400")}></span>
-                <span className={cn("relative rounded-full h-2 w-2", isCritical ? "bg-red-600" : "bg-blue-600")}></span>
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className={cn(
+                  "animate-ping absolute h-full w-full rounded-full opacity-75",
+                  isCritical ? "bg-red-500" : "bg-emerald-500"
+                )}></span>
+                <span className={cn(
+                  "relative rounded-full h-2.5 w-2.5",
+                  isCritical ? "bg-red-600" : "bg-emerald-600"
+                )}></span>
               </span>
             )}
           </div>
@@ -51,19 +59,23 @@ export function BedCard({ patient, vitals }) {
       {/* VITALS AREA */}
       <div className="px-6 py-6 flex-1 relative">
         {isStale && vitals && (
-          <div className="absolute top-2 right-6 flex items-center gap-1">
-            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
-              Last Known (Syncing...)
+          <div className="absolute top-3 right-6 flex items-center gap-1.5">
+            <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+              Syncing...
             </span>
           </div>
         )}
 
         {vitals ? (
-          <VitalMetrics vitals={vitals} />
+          <VitalMetrics 
+            vitals={vitals} 
+            fhirPatientId={patient.fhirPatientId}
+            showGraphs={false}
+          />
         ) : (
-          <div className="flex flex-col items-center justify-center py-10 bg-slate-50 rounded-[1.5rem] border border-dashed border-slate-200">
-            <Activity className="text-slate-200 mb-2" size={32} />
-            <span className="text-[10px] font-black text-slate-400 uppercase">Awaiting Feed...</span>
+          <div className="flex flex-col items-center justify-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <Activity className="text-slate-300 mb-2" size={32} />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Awaiting Feed...</span>
           </div>
         )}
       </div>
@@ -71,7 +83,7 @@ export function BedCard({ patient, vitals }) {
       {/* FOOTER */}
       <div className={cn(
         "px-6 py-3 border-t flex items-center justify-between mt-auto",
-        isCritical ? "bg-red-600 border-red-500 text-white" : "bg-white border-slate-50 text-slate-400"
+        isCritical ? "bg-red-600 border-red-500 text-white" : "bg-white border-slate-100 text-slate-500"
       )}>
         <span className="text-[10px] font-black uppercase tracking-widest truncate">
           {patient.doctorName ? `Dr. ${patient.doctorName}` : 'Unassigned'}
@@ -86,7 +98,7 @@ export function BedCard({ patient, vitals }) {
       </div>
 
       {isCritical && (
-        <div className="bg-red-600 py-1 flex items-center justify-center gap-2">
+        <div className="bg-red-600 py-2 flex items-center justify-center gap-2">
           <AlertTriangle size={12} className="text-white animate-bounce" />
           <span className="text-[9px] font-black text-white uppercase tracking-widest">Sepsis Alert</span>
         </div>

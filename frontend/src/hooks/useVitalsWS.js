@@ -2,19 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useAuthStore, useAlertStore, useVitalsStore } from '../store';
+import { useVitalsHistoryStore } from '../store';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws';
 
 export function useVitalsWS(patients = []) {
   const clientRef = useRef(null);
   const subscriptionsRef = useRef({});
-  const [connected, setConnected] = useState(false); // Track actual connection status
+  const [connected, setConnected] = useState(false);
 
   const token = useAuthStore(state => state.token);
   const addAlert = useAlertStore(state => state.addAlert);
 
   const vitalsMap = useVitalsStore(state => state.vitals);
   const updateVitals = useVitalsStore(state => state.updateVitals);
+
+  // Enhanced history store integration for chart support
+  const addVitalReading = useVitalsHistoryStore(state => state.addVitalReading);
 
   // 1. Manage WebSocket Connection Lifecycle
   useEffect(() => {
@@ -32,7 +36,7 @@ export function useVitalsWS(patients = []) {
       heartbeatOutgoing: 4000,
       onConnect: () => {
         console.log('STOMP: Connected successfully');
-        setConnected(true); // Signal that it's safe to subscribe
+        setConnected(true);
       },
       onDisconnect: () => {
         console.log('STOMP: Disconnected');
@@ -57,7 +61,6 @@ export function useVitalsWS(patients = []) {
 
   // 2. Manage Individual Subscriptions
   useEffect(() => {
-    // CRITICAL FIX: Only subscribe if the connection is established (connected === true)
     if (!connected || !clientRef.current || !clientRef.current.connected) {
       return;
     }
@@ -67,7 +70,6 @@ export function useVitalsWS(patients = []) {
     patients.forEach(patient => {
       const id = patient.fhirPatientId;
 
-      // If patient exists and we haven't subscribed yet
       if (id && !subscriptionsRef.current[id]) {
         console.log(`STOMP: Subscribing to vitals for ${id}`);
 
@@ -75,8 +77,15 @@ export function useVitalsWS(patients = []) {
           subscriptionsRef.current[id] = client.subscribe(`/topic/vitals/${id}`, message => {
             if (message.body) {
               const data = JSON.parse(message.body);
+
+              // Update main vitals store (latest reading)
               updateVitals(id, data);
 
+              // Add to enhanced history store for chart rendering
+              // This stores the complete vital object with timestamp
+              addVitalReading(id, data);
+
+              // Check for sepsis alert
               if (data.sepsisLabel === 1) {
                 addAlert({
                   patientId: patient.id,
@@ -94,11 +103,7 @@ export function useVitalsWS(patients = []) {
       }
     });
 
-    // Cleanup logic: If a patient is no longer in the list, we could unsubscribe here
-    // but usually, it's fine to keep them for the session unless the list is huge.
+  }, [patients, connected, updateVitals, addAlert, addVitalReading]);
 
-  }, [patients, connected, updateVitals, addAlert]);
-
-  // Return the global cache (immediately available from sessionStorage via store)
   return vitalsMap;
 }
