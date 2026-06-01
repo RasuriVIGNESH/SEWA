@@ -2,22 +2,22 @@
 # SPRING BOOT BACKEND
 # =========================
 
-SEWA/HELP.md
-SEWA/target/
-SEWA/.env
+SEWA-backend/HELP.md
+SEWA-backend/target/
+SEWA-backend/.env
 
 # Maven wrapper jar
-SEWA/.mvn/wrapper/maven-wrapper.jar
+SEWA-backend/.mvn/wrapper/maven-wrapper.jar
 
 # Allow nested target folders if needed
-!SEWA/src/main/**/target/
-!SEWA/src/test/**/target/
+!SEWA-backend/src/main/**/target/
+!SEWA-backend/src/test/**/target/
 
 # IntelliJ
-SEWA/.idea/
-SEWA/*.iws
-SEWA/*.iml
-SEWA/*.ipr
+SEWA-backend/.idea/
+SEWA-backend/*.iws
+SEWA-backend/*.iml
+SEWA-backend/*.ipr
 
 
 # =========================
