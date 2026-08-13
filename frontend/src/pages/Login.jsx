@@ -10,7 +10,7 @@ import {
   Activity,
   ShieldCheck
 } from 'lucide-react';
-import { api } from '../api';
+import { authService } from '../services/authService';
 import { useAuthStore } from '../store';
 
 export default function Login() {
@@ -20,13 +20,7 @@ export default function Login() {
   const loginFn = useAuthStore(state => state.login);
 
   const loginMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/auth/login', {
-        email,
-        password
-      });
-      return data;
-    },
+    mutationFn: () => authService.login({ email, password }),
     onSuccess: data => {
       loginFn(data.token, data.name, data.doctorId);
       navigate('/dashboard');

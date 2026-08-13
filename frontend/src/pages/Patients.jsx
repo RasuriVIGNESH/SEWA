@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { patientService } from '../services/patientService';
 import { StatusBadge } from '../components/StatusBadge';
 import { Search, Users, ChevronRight, Clock, UserCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { formatRelativeTime } from '../lib/formatters';
@@ -12,7 +12,7 @@ export default function Patients() {
 
   const { data: patients, isLoading } = useQuery({
     queryKey: ['patients'],
-    queryFn: async () => (await api.get('/patients')).data,
+    queryFn: () => patientService.getAllPatients(),
     refetchInterval: 15000 // FIXED: Lowered from 60s to 15s
   });
 

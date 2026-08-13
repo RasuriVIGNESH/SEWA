@@ -49,3 +49,9 @@ ICU vitals simulater/*.pyc
 
 .DS_Store
 Thumbs.db
+
+.idea
+MLservice/app/data/
+MLservice/.env
+MLservice/.venv
+MLservice/.idea

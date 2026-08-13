@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { format } from 'date-fns';
-import { api } from '../api';
+import { patientService } from '../services/patientService';
 import { StatusBadge } from '../components/StatusBadge';
 import { useVitalsWS } from '../hooks/useVitalsWS';
 import {
@@ -158,7 +158,7 @@ export default function MyPatientDetails() {
 
     const { data: patient, isLoading, isError } = useQuery({
         queryKey: ['patient', id],
-        queryFn: async () => (await api.get(`/patients/${id}`)).data
+        queryFn: () => patientService.getPatientById(id)
     });
 
     useEffect(() => {
@@ -181,7 +181,7 @@ export default function MyPatientDetails() {
     const readings = vitals?.readings ?? [];
 
     const updateMutation = useMutation({
-        mutationFn: async () => { await api.patch(`/patients/${id}`, editForm); },
+        mutationFn: () => patientService.updatePatient(id, editForm),
         onSuccess: () => {
             toast.success('Record Updated');
             queryClient.invalidateQueries({ queryKey: ['patient', id] });
@@ -191,7 +191,7 @@ export default function MyPatientDetails() {
     });
 
     const dischargeMutation = useMutation({
-        mutationFn: async () => await api.post(`/patients/${id}/discharge`),
+        mutationFn: () => patientService.dischargePatient(id),
         onSuccess: () => { toast.success('Patient Discharged'); navigate('/'); },
         onError: () => toast.error('Discharge failed')
     });

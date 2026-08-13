@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api';
+import { doctorService } from '../services/doctorService';
 import { BedCard } from '../components/BedCard';
+import { AdmitPatientModal } from '../components/AdmitPatientModal';
 import { useVitalsWS } from '../hooks/useVitalsWS';
 import { useAuthStore, useAlertStore } from '../store';
 
@@ -20,10 +21,11 @@ export default function Dashboard() {
   const { doctorId, doctorName } = useAuthStore();
   const unreadCount = useAlertStore(state => state.unreadCount);
   const [search, setSearch] = useState('');
+  const [isAdmitModalOpen, setIsAdmitModalOpen] = useState(false);
 
   const { data: patients, isLoading } = useQuery({
     queryKey: ['patients', 'assigned', doctorId],
-    queryFn: async () => (await api.get(`/doctors/${doctorId}/patients`)).data,
+    queryFn: () => doctorService.getDoctorPatients(doctorId),
     refetchInterval: 5000
   });
 
@@ -53,7 +55,14 @@ export default function Dashboard() {
       <nav className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-8 py-4 shadow-sm">
         <div className="max-w-[1600px] mx-auto flex justify-between items-center">
           <div className="flex items-center gap-6">
+            <h1 className="text-xl font-black text-slate-900 tracking-tight">WARD OVERVIEW</h1>
           </div>
+          <button 
+            onClick={() => setIsAdmitModalOpen(true)}
+            className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <Users size={16} /> Admit Patient
+          </button>
         </div>
       </nav>
 
@@ -124,6 +133,11 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+      
+      <AdmitPatientModal 
+        isOpen={isAdmitModalOpen} 
+        onClose={() => setIsAdmitModalOpen(false)} 
+      />
     </div>
   );
 }

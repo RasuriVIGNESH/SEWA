@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
+import { patientService } from '../services/patientService';
+import { doctorService } from '../services/doctorService';
 import { StatusBadge } from '../components/StatusBadge';
 import { VitalMetrics } from '../components/VitalMetrics';
 import VitalTrendChart from '../components/vitalTrendChart';
@@ -41,7 +42,7 @@ export default function PatientDetail() {
   // 1. Fetch Patient Data
   const { data: patient, isLoading } = useQuery({
     queryKey: ['patient', id],
-    queryFn: async () => (await api.get(`/patients/${id}`)).data
+    queryFn: () => patientService.getPatientById(id)
   });
 
   // Sync Form (Fixed uncontrolled input warning with || '')
@@ -75,19 +76,19 @@ export default function PatientDetail() {
   // 3. Mutations
   const { data: doctors } = useQuery({
     queryKey: ['doctors'],
-    queryFn: async () => (await api.get('/doctors')).data,
+    queryFn: () => doctorService.getAllDoctors(),
     enabled: showAssignModal && step === 4
   });
 
   const assignMutation = useMutation({
     mutationFn: async (doctorId) => {
       // Step A: Assign doctor to get permissions
-      await api.post('/patients/assign', { patientId: parseInt(id), doctorId });
+      await patientService.assignPatient({ patientId: parseInt(id), doctorId });
       // Step B: Update the clinical chart
-      await api.patch(`/patients/${id}`, form);
+      await patientService.updatePatient(id, form);
     },
     onSuccess: () => {
-      toast.success('Patient Intake & Assignment Complete');
+      toast.success('Patient Assignment Updated');
       queryClient.invalidateQueries({ queryKey: ['patient', id] });
       setShowAssignModal(false);
       setStep(1);
@@ -95,7 +96,7 @@ export default function PatientDetail() {
   });
 
   const dischargeMutation = useMutation({
-    mutationFn: async () => await api.post(`/patients/${id}/discharge`),
+    mutationFn: () => patientService.dischargePatient(id),
     onSuccess: () => {
       toast.success('Patient Discharged');
       navigate('/patients');
@@ -134,9 +135,9 @@ export default function PatientDetail() {
         </div>
 
         <div className="flex gap-4">
-          {!patient.doctorName && patient.status !== 'DISCHARGED' && (
+          {patient.status !== 'DISCHARGED' && (
             <button onClick={() => setShowAssignModal(true)} className="px-8 py-4 bg-blue-600 text-white rounded-xl font-black text-sm flex items-center gap-3 shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95">
-              <UserPlus size={20} /> Complete Intake
+              <UserPlus size={20} /> {patient.doctorName ? 'Re-assign Doctor' : 'Complete Intake'}
             </button>
           )}
           {patient.status !== 'DISCHARGED' && (

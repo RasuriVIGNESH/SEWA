@@ -2,7 +2,6 @@ package com.vig.sewa_backend.service;
 
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import com.vig.sewa_backend.Entity.Patient;
-import com.vig.sewa_backend.Entity.Status;
 import com.vig.sewa_backend.DTO.VitalReadingDTO;
 import com.vig.sewa_backend.repository.PatientRepository;
 import com.vig.sewa_backend.serviceInterface.iPoolerService;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
@@ -28,34 +28,40 @@ public class FhirPollerService implements iPoolerService {
     private final SimpMessagingTemplate messaging;
     private final PatientRepository patientRepository;
 
-    // ── IN-MEMORY CACHE ──────────────────────────────────────────────────────
-    // Key: fhirPatientId | Value: Patient entity (only active/bedded patients)
-    // Max ~5 entries in ICU — zero DB hits after first observation per patient.
+    // ── POLLER GUARD ──────────────────────────────────────────────────────────
+    // Disabled by default; StartupOrchestrator enables it after FHIR check.
+    private final AtomicBoolean pollerEnabled = new AtomicBoolean(false);
+
+    // ── IN-MEMORY CACHE ───────────────────────────────────────────────────────
+    // Key: fhirPatientId | Value: Patient snapshot (used for diff → DB update)
     private final Map<String, Patient> activePatientCache = new ConcurrentHashMap<>();
 
+    // Dedup guard — prevents re-processing the same observation ID
     private final Set<String> processedIds = Collections.synchronizedSet(new HashSet<>());
 
-    private static final String LAST_POLL_FILE = "last_poll_time.txt";
-    private Instant lastPollTime = loadLastPollTime();
+    // Rolling poll window — fetch observations newer than this
+    private Instant lastPollTime = Instant.now().minusSeconds(5);
 
-    private Instant loadLastPollTime() {
-        try {
-            java.nio.file.Path path = java.nio.file.Paths.get(LAST_POLL_FILE);
-            if (java.nio.file.Files.exists(path)) {
-                String content = java.nio.file.Files.readString(path).trim();
-                return Instant.parse(content);
-            }
-        } catch (Exception e) {
-            log.warn("Could not read last poll time, defaulting to 3s ago");
-        }
-        return Instant.now().minusSeconds(3);
+    // ── ENABLE / DISABLE (called by StartupOrchestrator) ─────────────────────
+
+    @Override
+    public void setPollerEnabled(boolean enabled) {
+        pollerEnabled.set(enabled);
+        log.info("FhirPollerService pollerEnabled={}", enabled);
     }
 
-    // ── POLL ─────────────────────────────────────────────────────────────────
+    // ── SCHEDULED POLL ───────────────────────────────────────────────────────
 
-    @Scheduled(fixedDelayString = "${fhir.poll.interval-ms:2000}")
+    /**
+     * Runs every fhir.poll.interval-ms (default 3 s, tunable in properties).
+     * Does nothing until StartupOrchestrator calls setPollerEnabled(true).
+     */
+    @Scheduled(fixedDelayString = "${fhir.poll.interval-ms:3000}")
     @Override
     public void pollAndBroadcast() {
+
+        if (!pollerEnabled.get()) return;
+
         try {
             Bundle bundle = fhirClient.search()
                     .forResource(Observation.class)
@@ -65,10 +71,11 @@ public class FhirPollerService implements iPoolerService {
                     .returnBundle(Bundle.class)
                     .execute();
 
-            if (processedIds.size() > 5000) {
-                processedIds.clear();
-            }
+            // Prevent processedIds growing unbounded in long-running sessions
+            if (processedIds.size() > 5000) processedIds.clear();
+
             Instant pollStart = Instant.now();
+
             if (bundle.getEntry().isEmpty()) return;
 
             for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
@@ -80,77 +87,54 @@ public class FhirPollerService implements iPoolerService {
 
                 String fhirPatientId = obs.getSubject().getReference().replace("Patient/", "");
 
+                // Resolve patient from cache (no DB hit if already cached)
                 Patient patient = resolvePatient(fhirPatientId);
+                if (patient == null) continue;
+
+                // Diff patient fields from FHIR observation extensions → update DB if changed
+                checkAndSyncPatientDetails(obs, patient);
+
                 VitalReadingDTO dto = mapToDTO(obs, patient);
                 if (dto == null) continue;
 
-                try {
-                    kafkaTemplate
-                            .send("sewa.vitals", fhirPatientId, dto)
-                            .whenComplete((result, ex) -> {
+                // ── Kafka ──
+                kafkaTemplate.send("sewa.vitals", fhirPatientId, dto)
+                        .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                log.error("Kafka publish failed → patient={}", fhirPatientId, ex);
+                            } else {
+                                log.debug("Kafka published → partition={} offset={}",
+                                        result.getRecordMetadata().partition(),
+                                        result.getRecordMetadata().offset());
+                            }
+                        });
 
-                                if (ex != null) {
-
-                                    log.error(
-                                            "Kafka publish failed → patient={}",
-                                            fhirPatientId,
-                                            ex
-                                    );
-
-                                } else {
-
-                                    log.info(
-                                            "Kafka published → topic={} partition={} offset={}",
-                                            result.getRecordMetadata().topic(),
-                                            result.getRecordMetadata().partition(),
-                                            result.getRecordMetadata().offset()
-                                    );
-                                }
-                            });
-                    messaging.convertAndSend(
-                            "/topic/vitals/" + fhirPatientId,
-                            dto
-                    );
-                    log.info(
-                            "Vitals broadcasted → patient={} bed={}",
-                            fhirPatientId,
-                            dto.getBedNumber()
-                    );
-                } catch (Exception e) {
-                    log.error(
-                            "Broadcast pipeline failed → patient={}",
-                            fhirPatientId,
-                            e
-                    );
-                }
+                // ── WebSocket ──
+                messaging.convertAndSend("/topic/vitals/" + fhirPatientId, dto);
+                log.info("Vitals broadcast → patient={} bed={}", fhirPatientId, dto.getBedNumber());
             }
+
             lastPollTime = pollStart;
-            try {
-                java.nio.file.Files.writeString(
-                        java.nio.file.Paths.get(LAST_POLL_FILE),
-                        lastPollTime.toString()
-                );
-            } catch (Exception e) {
-                log.warn("Could not persist last poll time");
-            }
 
         } catch (Exception e) {
-//            log.error("FHIR poll error", e);
-            log.warn("No info from FHIR");
+            log.warn("FHIR poll error — ICU may be temporarily unavailable: {}", e.getMessage());
         }
     }
 
-    // ── PATIENT RESOLUTION ───────────────────────────────────────────────────
+    // ── PATIENT RESOLUTION ────────────────────────────────────────────────────
 
     /**
-     * 1. Cache hit  → return immediately (every call after first observation)
-     * 2. DB hit     → load into cache, return
-     * 3. Neither    → auto-create minimal record, cache, return
-     *                 Doctor fills name/bed/details later via API
+     * Resolution order:
+     *  1. Cache hit  → return immediately (zero DB call)
+     *  2. DB hit     → load into cache, return
+     *  3. Neither    → vitals arrived for a patient not yet in DB (race on startup).
+     *                  Log a warning; return null so this observation is skipped.
+     *                  On the next scheduler tick the sync will have completed and
+     *                  the patient will be in DB.
      */
     private Patient resolvePatient(String fhirPatientId) {
 
-        // 1. RAM — no DB call
+        // 1. Cache
         Patient cached = activePatientCache.get(fhirPatientId);
         if (cached != null) return cached;
 
@@ -162,42 +146,88 @@ public class FhirPollerService implements iPoolerService {
             return fromDb.get();
         }
 
-        // 3. Auto-create — FHIR data arrived before doctor registered this patient
-        Patient p = new Patient();
-        p.setFhirPatientId(fhirPatientId);
-        p.setName("Unknown");           // doctor updates later
-        p.setBedNumber("ICU-" + (activePatientCache.size() + 1));  // doctor updates later
-        p.setStatus(Status.UNDER_OBSERVATION);
-        Patient saved = patientRepository.save(p);
-
-        activePatientCache.put(fhirPatientId, saved);
-        log.info("Auto-created patient → fhirId={} dbId={}", fhirPatientId, saved.getId());
-        return saved;
+        // 3. Unknown — startup sync is still in progress or patient never registered
+        log.warn("Vitals received for unknown fhirId={} — skipping until patient is synced.",
+                fhirPatientId);
+        return null;
     }
 
-    // ── CACHE MANAGEMENT — called by PatientService ───────────────────────────
+    // ── CACHE DIFF → DB UPDATE ────────────────────────────────────────────────
 
-    /** Doctor updated patient details → refresh so next broadcast has fresh name/bed. */
+    /**
+     * Compares the FHIR Patient-level extensions/identifiers carried in the
+     * Observation against the current cache snapshot.
+     * If anything changed (FHIR ID updated, bed number changed, etc.) → update DB.
+     *
+     * Currently watches:
+     *  - fhirPatientId confirmation (ICU may set this via observation subject)
+     *  - bed number carried as an Observation extension
+     */
+    private void checkAndSyncPatientDetails(Observation obs, Patient cached) {
+        boolean dirty = false;
+
+        // Check for bed-number extension on the observation (ICU device may emit this)
+        String newBed = obs.getExtension().stream()
+                .filter(e -> "http://sewa.local/extension/bedNumber".equals(e.getUrl()))
+                .findFirst()
+                .map(e -> e.getValue().toString())
+                .orElse(null);
+
+        if (newBed != null && !newBed.equals(cached.getBedNumber())) {
+            log.info("Bed change detected → fhirId={} old={} new={}",
+                    cached.getFhirPatientId(), cached.getBedNumber(), newBed);
+            cached.setBedNumber(newBed);
+            dirty = true;
+        }
+
+        // Check for fhirPatientId update extension (ICU confirms the link)
+        String confirmedFhirId = obs.getExtension().stream()
+                .filter(e -> "http://sewa.local/extension/confirmedFhirId".equals(e.getUrl()))
+                .findFirst()
+                .map(e -> e.getValue().toString())
+                .orElse(null);
+
+        if (confirmedFhirId != null
+                && !confirmedFhirId.equals(cached.getFhirPatientId())) {
+            log.info("FHIR ID update from ICU → dbId={} old={} new={}",
+                    cached.getId(), cached.getFhirPatientId(), confirmedFhirId);
+            // Update DB with new FHIR ID, re-key cache
+            patientRepository.updateFhirPatientId(cached.getId(), confirmedFhirId);
+            activePatientCache.remove(cached.getFhirPatientId());
+            cached.setFhirPatientId(confirmedFhirId);
+            activePatientCache.put(confirmedFhirId, cached);
+            dirty = false; // already persisted above
+        }
+
+        if (dirty) {
+            patientRepository.save(cached);
+            log.debug("DB updated for patient dbId={}", cached.getId());
+        }
+    }
+
+    // ── CACHE MANAGEMENT (called by PatientService & FhirSyncService) ─────────
+
     @Override
     public void refreshCache(String fhirPatientId) {
         patientRepository.findByFhirPatientId(fhirPatientId)
-                .ifPresent(p -> activePatientCache.put(fhirPatientId, p));
+                .ifPresent(p -> {
+                    activePatientCache.put(fhirPatientId, p);
+                    log.debug("Cache refreshed → fhirId={}", fhirPatientId);
+                });
     }
 
-    /** Patient discharged → remove from active cache. */
     @Override
     public void evictFromCache(String fhirPatientId) {
         activePatientCache.remove(fhirPatientId);
-        log.info("Evicted patient from cache → fhirId={}", fhirPatientId);
+        log.info("Cache evicted → fhirId={}", fhirPatientId);
     }
 
-    /** Debug/admin — who is currently live in RAM. */
     @Override
     public Set<String> getCachedPatientIds() {
         return Collections.unmodifiableSet(activePatientCache.keySet());
     }
 
-    // ── MAPPING ──────────────────────────────────────────────────────────────
+    // ── MAPPING ───────────────────────────────────────────────────────────────
 
     private VitalReadingDTO mapToDTO(Observation obs, Patient patient) {
         if (!obs.hasComponent()) return null;

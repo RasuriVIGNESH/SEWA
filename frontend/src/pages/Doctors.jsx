@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { doctorService } from '../services/doctorService';
 import { Stethoscope, Mail, Phone } from 'lucide-react';
 export default function Doctors() {
   const navigate = useNavigate();
@@ -9,10 +9,7 @@ export default function Doctors() {
     isLoading
   } = useQuery({
     queryKey: ['doctors'],
-    queryFn: async () => {
-      const response = await api.get('/doctors');
-      return response.data;
-    }
+    queryFn: () => doctorService.getAllDoctors()
   });
   return <div className="flex flex-col h-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

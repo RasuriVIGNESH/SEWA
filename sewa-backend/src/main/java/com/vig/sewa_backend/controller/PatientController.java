@@ -18,7 +18,7 @@ import java.util.List;
 public class PatientController {
 
     @Autowired
-    private final PatientService patientService;
+    private PatientService patientService;
 
     @PostMapping("/new")
     public ResponseEntity<PatientResponse> create(@RequestBody PatientRequest req) {

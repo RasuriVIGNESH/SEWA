@@ -9,6 +9,7 @@ import com.vig.sewa_backend.repository.DoctorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -42,6 +43,7 @@ public class DoctorService {
         return DoctorRepository.findAllWithPatientCount();  // single aggregated query
     }
 
+    @Transactional
     public DoctorResponse getById(Long id) {
         Doctor d = DoctorRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Doctor not found: " + id));

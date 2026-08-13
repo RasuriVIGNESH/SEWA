@@ -19,6 +19,8 @@ public class FhirConfig {
 
     @Bean
     public IGenericClient fhirClient(FhirContext ctx) {
+        ctx.getRestfulClientFactory().setSocketTimeout(5000);
+        ctx.getRestfulClientFactory().setConnectTimeout(3000);
         return ctx.newRestfulGenericClient(fhirServerUrl);
     }
 }

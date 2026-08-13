@@ -13,7 +13,6 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
 
     boolean existsByEmail(String email);
 
-    // Fetch all doctors with patient count — no N+1
     @Query("""
         SELECT new com.vig.sewa_backend.DTO.DoctorResponse(
             d.id, d.name, d.specialization, d.email, d.phoneNumber,
@@ -24,9 +23,11 @@ public interface DoctorRepository extends JpaRepository<Doctor, Long> {
     """)
     List<DoctorResponse> findAllWithPatientCount();
 
-    // Doctor's patients — only needed columns, no cartesian join
+    // Fetch patientDetails AND doctor together — prevents LazyInitializationException in toResponse()
     @Query("""
         SELECT p FROM Patient p
+        LEFT JOIN FETCH p.patientDetails
+        LEFT JOIN FETCH p.doctor
         WHERE p.doctor.id = :doctorId
         ORDER BY p.bedNumber
     """)

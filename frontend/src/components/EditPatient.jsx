@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
+import { patientService } from '../services/patientService';
 import {
     X, User, Phone, Bed, Activity,
     Calendar, MapPin, FileText, Save,
@@ -12,7 +12,7 @@ export function EditPatient({ patient, isOpen, onClose }) {
     const [formData, setFormData] = useState({ ...patient });
 
     const mutation = useMutation({
-        mutationFn: (updatedData) => api.patch(`/patients/${patient.id}`, updatedData),
+        mutationFn: (updatedData) => patientService.updatePatient(patient.id, updatedData),
         onSuccess: () => {
             queryClient.invalidateQueries(['patients']);
             onClose();

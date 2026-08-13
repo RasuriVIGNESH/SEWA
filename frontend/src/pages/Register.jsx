@@ -12,7 +12,7 @@ import {
   Loader2,
   ShieldCheck
 } from 'lucide-react';
-import { api } from '../api';
+import { authService } from '../services/authService';
 import { useAuthStore } from '../store';
 
 export default function Register() {
@@ -28,10 +28,7 @@ export default function Register() {
   const loginFn = useAuthStore(state => state.login);
 
   const registerMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/auth/register', formData);
-      return data;
-    },
+    mutationFn: () => authService.register(formData),
     onSuccess: data => {
       loginFn(data.token, data.name, data.doctorId);
       navigate('/dashboard');
