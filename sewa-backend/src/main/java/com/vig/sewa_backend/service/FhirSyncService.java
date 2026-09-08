@@ -65,7 +65,6 @@ public class FhirSyncService {
      * Each patient push runs in its own transaction.
      * If one patient fails, the rest are not affected.
      */
-    @Transactional
     public void pushToFhirAndPersist(Patient patient) {
         String fhirId = fhirPatientService.createPatientInFhir(patient);
 
@@ -74,9 +73,11 @@ public class FhirSyncService {
             return;
         }
 
-        // Persist FHIR ID back to DB
-        patientRepository.updateFhirPatientId(patient.getId(), fhirId);
+        // Persist FHIR ID back to DB. Use repository.save() which opens a transaction
+        // for the single entity operation to avoid @Transactional proxy pitfalls when
+        // calling methods on the same bean from within the bean.
         patient.setFhirPatientId(fhirId);
+        patientRepository.save(patient);
 
         // Warm cache so poller picks up vitals immediately
         fhirPollerService.refreshCache(fhirId);
