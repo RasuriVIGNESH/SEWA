@@ -8,6 +8,8 @@ import com.vig.sewa_backend.serviceInterface.iPoolerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hl7.fhir.r4.model.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,22 +29,12 @@ public class FhirPollerService implements iPoolerService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final SimpMessagingTemplate messaging;
     private final PatientRepository patientRepository;
+    private final ObjectMapper objectMapper;
 
-    // ── POLLER GUARD ──────────────────────────────────────────────────────────
-    // Disabled by default; StartupOrchestrator enables it after FHIR check.
     private final AtomicBoolean pollerEnabled = new AtomicBoolean(false);
-
-    // ── IN-MEMORY CACHE ───────────────────────────────────────────────────────
-    // Key: fhirPatientId | Value: Patient snapshot (used for diff → DB update)
     private final Map<String, Patient> activePatientCache = new ConcurrentHashMap<>();
-
-    // Dedup guard — prevents re-processing the same observation ID
     private final Set<String> processedIds = Collections.synchronizedSet(new HashSet<>());
-
-    // Rolling poll window — fetch observations newer than this
     private Instant lastPollTime = Instant.now().minusSeconds(5);
-
-    // ── ENABLE / DISABLE (called by StartupOrchestrator) ─────────────────────
 
     @Override
     public void setPollerEnabled(boolean enabled) {
@@ -50,16 +42,9 @@ public class FhirPollerService implements iPoolerService {
         log.info("FhirPollerService pollerEnabled={}", enabled);
     }
 
-    // ── SCHEDULED POLL ───────────────────────────────────────────────────────
-
-    /**
-     * Runs every fhir.poll.interval-ms (default 3 s, tunable in properties).
-     * Does nothing until StartupOrchestrator calls setPollerEnabled(true).
-     */
     @Scheduled(fixedDelayString = "${fhir.poll.interval-ms:3000}")
     @Override
     public void pollAndBroadcast() {
-
         if (!pollerEnabled.get()) return;
 
         try {
@@ -71,9 +56,7 @@ public class FhirPollerService implements iPoolerService {
                     .returnBundle(Bundle.class)
                     .execute();
 
-            // Prevent processedIds growing unbounded in long-running sessions
             if (processedIds.size() > 5000) processedIds.clear();
-
             Instant pollStart = Instant.now();
 
             if (bundle.getEntry().isEmpty()) return;
@@ -86,148 +69,41 @@ public class FhirPollerService implements iPoolerService {
                 processedIds.add(obsId);
 
                 String fhirPatientId = obs.getSubject().getReference().replace("Patient/", "");
-
-                // Resolve patient from cache (no DB hit if already cached)
                 Patient patient = resolvePatient(fhirPatientId);
                 if (patient == null) continue;
-
-                // Diff patient fields from FHIR observation extensions → update DB if changed
-                checkAndSyncPatientDetails(obs, patient);
 
                 VitalReadingDTO dto = mapToDTO(obs, patient);
                 if (dto == null) continue;
 
                 // ── Kafka ──
-                kafkaTemplate.send("sewa.vitals", fhirPatientId, dto)
-                        .whenComplete((result, ex) -> {
-                            if (ex != null) {
-                                log.error("Kafka publish failed → patient={}", fhirPatientId, ex);
-                            } else {
-                                log.debug("Kafka published → partition={} offset={}",
-                                        result.getRecordMetadata().partition(),
-                                        result.getRecordMetadata().offset());
-                            }
-                        });
+                kafkaTemplate.send("sewa.vitals", fhirPatientId, dto);
 
                 // ── WebSocket ──
-                messaging.convertAndSend("/topic/vitals/" + fhirPatientId, dto);
-                log.info("Vitals broadcast → patient={} bed={}", fhirPatientId, dto.getBedNumber());
+                try {
+                    String payload = objectMapper.writeValueAsString(dto);
+                    String dest = "/topic/vitals/" + fhirPatientId;
+                    messaging.convertAndSend(dest, payload);
+                    log.info("Vitals broadcast → dest={} patient={} bed={} payloadLen={}", dest, fhirPatientId, dto.getBedNumber(), payload.length());
+                } catch (JsonProcessingException jpe) {
+                    log.error("Failed to serialize VitalReadingDTO to JSON for fhirPatientId={}", fhirPatientId, jpe);
+                }
             }
-
             lastPollTime = pollStart;
-
         } catch (Exception e) {
-            log.warn("FHIR poll error — ICU may be temporarily unavailable: {}", e.getMessage());
+            log.warn("FHIR poll error: {}", e.getMessage());
         }
     }
 
-    // ── PATIENT RESOLUTION ────────────────────────────────────────────────────
-
-    /**
-     * Resolution order:
-     *  1. Cache hit  → return immediately (zero DB call)
-     *  2. DB hit     → load into cache, return
-     *  3. Neither    → vitals arrived for a patient not yet in DB (race on startup).
-     *                  Log a warning; return null so this observation is skipped.
-     *                  On the next scheduler tick the sync will have completed and
-     *                  the patient will be in DB.
-     */
     private Patient resolvePatient(String fhirPatientId) {
-
-        // 1. Cache
         Patient cached = activePatientCache.get(fhirPatientId);
         if (cached != null) return cached;
 
-        // 2. DB
-        Optional<Patient> fromDb = patientRepository.findByFhirPatientId(fhirPatientId);
-        if (fromDb.isPresent()) {
-            activePatientCache.put(fhirPatientId, fromDb.get());
-            log.info("Cache loaded from DB → fhirId={}", fhirPatientId);
-            return fromDb.get();
-        }
-
-        // 3. Unknown — startup sync is still in progress or patient never registered
-        log.warn("Vitals received for unknown fhirId={} — skipping until patient is synced.",
-                fhirPatientId);
-        return null;
-    }
-
-    // ── CACHE DIFF → DB UPDATE ────────────────────────────────────────────────
-
-    /**
-     * Compares the FHIR Patient-level extensions/identifiers carried in the
-     * Observation against the current cache snapshot.
-     * If anything changed (FHIR ID updated, bed number changed, etc.) → update DB.
-     *
-     * Currently watches:
-     *  - fhirPatientId confirmation (ICU may set this via observation subject)
-     *  - bed number carried as an Observation extension
-     */
-    private void checkAndSyncPatientDetails(Observation obs, Patient cached) {
-        boolean dirty = false;
-
-        // Check for bed-number extension on the observation (ICU device may emit this)
-        String newBed = obs.getExtension().stream()
-                .filter(e -> "http://sewa.local/extension/bedNumber".equals(e.getUrl()))
-                .findFirst()
-                .map(e -> e.getValue().toString())
-                .orElse(null);
-
-        if (newBed != null && !newBed.equals(cached.getBedNumber())) {
-            log.info("Bed change detected → fhirId={} old={} new={}",
-                    cached.getFhirPatientId(), cached.getBedNumber(), newBed);
-            cached.setBedNumber(newBed);
-            dirty = true;
-        }
-
-        // Check for fhirPatientId update extension (ICU confirms the link)
-        String confirmedFhirId = obs.getExtension().stream()
-                .filter(e -> "http://sewa.local/extension/confirmedFhirId".equals(e.getUrl()))
-                .findFirst()
-                .map(e -> e.getValue().toString())
-                .orElse(null);
-
-        if (confirmedFhirId != null
-                && !confirmedFhirId.equals(cached.getFhirPatientId())) {
-            log.info("FHIR ID update from ICU → dbId={} old={} new={}",
-                    cached.getId(), cached.getFhirPatientId(), confirmedFhirId);
-            // Update DB with new FHIR ID, re-key cache
-            patientRepository.updateFhirPatientId(cached.getId(), confirmedFhirId);
-            activePatientCache.remove(cached.getFhirPatientId());
-            cached.setFhirPatientId(confirmedFhirId);
-            activePatientCache.put(confirmedFhirId, cached);
-            dirty = false; // already persisted above
-        }
-
-        if (dirty) {
-            patientRepository.save(cached);
-            log.debug("DB updated for patient dbId={}", cached.getId());
-        }
-    }
-
-    // ── CACHE MANAGEMENT (called by PatientService & FhirSyncService) ─────────
-
-    @Override
-    public void refreshCache(String fhirPatientId) {
-        patientRepository.findByFhirPatientId(fhirPatientId)
-                .ifPresent(p -> {
+        return patientRepository.findByFhirPatientId(fhirPatientId)
+                .map(p -> {
                     activePatientCache.put(fhirPatientId, p);
-                    log.debug("Cache refreshed → fhirId={}", fhirPatientId);
-                });
+                    return p;
+                }).orElse(null);
     }
-
-    @Override
-    public void evictFromCache(String fhirPatientId) {
-        activePatientCache.remove(fhirPatientId);
-        log.info("Cache evicted → fhirId={}", fhirPatientId);
-    }
-
-    @Override
-    public Set<String> getCachedPatientIds() {
-        return Collections.unmodifiableSet(activePatientCache.keySet());
-    }
-
-    // ── MAPPING ───────────────────────────────────────────────────────────────
 
     private VitalReadingDTO mapToDTO(Observation obs, Patient patient) {
         if (!obs.hasComponent()) return null;
@@ -249,17 +125,58 @@ public class FhirPollerService implements iPoolerService {
         for (Observation.ObservationComponentComponent comp : obs.getComponent()) {
             String code = comp.getCode().getCodingFirstRep().getCode();
             if (!comp.hasValueQuantity()) continue;
-            double value = comp.getValueQuantity().getValue().doubleValue();
+            double val = comp.getValueQuantity().getValue().doubleValue();
+
             switch (code) {
-                case "8867-4"  -> dto.setHeartRate(value);
-                case "59408-5" -> dto.setSpo2(value);
-                case "8310-5"  -> dto.setTemperature(value);
-                case "8480-6"  -> dto.setSystolicBP(value);
-                case "8462-4"  -> dto.setDiastolicBP(value);
-                case "8478-0"  -> dto.setMeanArterialPressure(value);
-                case "9279-1"  -> dto.setRespiratoryRate(value);
+                // Vitals
+                case "8867-4"  -> dto.setHr(val);
+                case "59408-5" -> dto.setO2Sat(val);
+                case "8310-5"  -> dto.setTemp(val);
+                case "8480-6"  -> dto.setSbp(val);
+                case "8478-0"  -> dto.setMap(val);
+                case "8462-4"  -> dto.setDbp(val);
+                case "9279-1"  -> dto.setResp(val);
+                case "19889-5" -> dto.setEtCO2(val);
+
+                // Blood Gas
+                case "1927-5"  -> dto.setBaseExcess(val);
+                case "1963-0"  -> dto.setHco3(val);
+                case "19994-3" -> dto.setFiO2(val);
+                case "11558-4" -> dto.setPh(val);
+                case "11557-6" -> dto.setPaCO2(val);
+                case "2708-6"  -> dto.setSaO2(val);
+
+                // Chemistry
+                case "1920-8"  -> dto.setAst(val);
+                case "2823-3"  -> dto.setBun(val);
+                case "6768-6"  -> dto.setAlkalinephos(val);
+                case "17861-6" -> dto.setCalcium(val);
+                case "2075-0"  -> dto.setChloride(val);
+                case "2160-0"  -> dto.setCreatinine(val);
+                case "1968-9"  -> dto.setBilirubin_direct(val);
+                case "2339-0"  -> dto.setGlucose(val);
+                case "2524-7"  -> dto.setLactate(val);
+                case "19123-9" -> dto.setMagnesium(val);
+                case "2777-1"  -> dto.setPhosphate(val);
+                case "1975-4"  -> dto.setBilirubin_total(val);
+                case "10839-9" -> dto.setTroponinI(val);
+                case "20570-8" -> dto.setHct(val);
+                case "718-7"   -> dto.setHgb(val);
+                case "3173-2"  -> dto.setPtt(val);
+                case "6690-2"  -> dto.setWbc(val);
+                case "2276-4"  -> dto.setFibrinogen(val);
+                case "777-3"   -> dto.setPlatelets(val);
+
+                // Metrics
+                case "30525-0" -> dto.setAge(val);
+                case "76689-9" -> dto.setGender(val);
+                case "ICU-LOS" -> dto.setIculos(val);
             }
         }
         return dto;
     }
+
+    @Override public void refreshCache(String id) { patientRepository.findByFhirPatientId(id).ifPresent(p -> activePatientCache.put(id, p)); }
+    @Override public void evictFromCache(String id) { activePatientCache.remove(id); }
+    @Override public Set<String> getCachedPatientIds() { return Collections.unmodifiableSet(activePatientCache.keySet()); }
 }
