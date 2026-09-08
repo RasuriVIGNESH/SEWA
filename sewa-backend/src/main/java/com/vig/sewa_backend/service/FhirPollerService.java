@@ -48,6 +48,8 @@ public class FhirPollerService implements iPoolerService {
     public void pollAndBroadcast() {
         if (!pollerEnabled.get()) return;
 
+        log.debug("FHIR poll tick: lastPollTime={} cacheSize={} processedIds={}", lastPollTime, activePatientCache.size(), processedIds.size());
+
         try {
             Bundle bundle = fhirClient.search()
                     .forResource(Observation.class)
@@ -60,6 +62,9 @@ public class FhirPollerService implements iPoolerService {
             if (processedIds.size() > 5000) processedIds.clear();
             Instant pollStart = Instant.now();
 
+            int entryCount = bundle.getEntry().size();
+            log.debug("FHIR poll returned {} entries", entryCount);
+
             if (bundle.getEntry().isEmpty()) return;
 
             for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
@@ -71,7 +76,10 @@ public class FhirPollerService implements iPoolerService {
 
                 String fhirPatientId = obs.getSubject().getReference().replace("Patient/", "");
                 Patient patient = resolvePatient(fhirPatientId);
-                if (patient == null) continue;
+                if (patient == null) {
+                    log.debug("No local patient mapping for fhirPatientId={}", fhirPatientId);
+                    continue;
+                }
 
                 VitalReadingDTO dto = mapToDTO(obs, patient);
                 if (dto == null) continue;
@@ -180,4 +188,8 @@ public class FhirPollerService implements iPoolerService {
     @Override public void refreshCache(String id) { patientRepository.findByFhirPatientId(id).ifPresent(p -> activePatientCache.put(id, p)); }
     @Override public void evictFromCache(String id) { activePatientCache.remove(id); }
     @Override public Set<String> getCachedPatientIds() { return Collections.unmodifiableSet(activePatientCache.keySet()); }
+
+    // Expose some debug helpers for runtime inspection
+    public int getProcessedCount() { return processedIds.size(); }
 }
+
