@@ -1,4 +1,4 @@
-import { Client } from '@stomp/stompjs';
+﻿import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws';
@@ -20,7 +20,8 @@ class WebSocketService {
         socket.transports = ['websocket'];
         return socket;
       },
-      connectHeaders: { Authorization: `Bearer ${token}` },
+      // Pass the Bearer token so the server can authenticate the SockJS/STOMP connection.
+      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
@@ -33,7 +34,7 @@ class WebSocketService {
         this.onDisconnectCallbacks.forEach(cb => cb());
       },
       onStompError: (frame) => {
-        console.error('STOMP Error:', frame.headers['message']);
+        console.error('STOMP Error:', frame && frame.headers && frame.headers['message']);
       }
     });
 
