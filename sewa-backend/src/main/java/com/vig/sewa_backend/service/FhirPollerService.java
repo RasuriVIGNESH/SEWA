@@ -29,7 +29,8 @@ public class FhirPollerService implements iPoolerService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final SimpMessagingTemplate messaging;
     private final PatientRepository patientRepository;
-    private final ObjectMapper objectMapper;
+    // Use a locally initialized ObjectMapper to avoid requiring a global bean
+    private final ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final AtomicBoolean pollerEnabled = new AtomicBoolean(false);
     private final Map<String, Patient> activePatientCache = new ConcurrentHashMap<>();
