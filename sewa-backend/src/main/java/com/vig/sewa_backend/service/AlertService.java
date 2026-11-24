@@ -1,7 +1,9 @@
 package com.vig.sewa_backend.service;
 
+import com.vig.sewa_backend.DTO.AlertResponse;
 import com.vig.sewa_backend.Entity.Alert;
 import com.vig.sewa_backend.repository.AlertRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -17,19 +19,34 @@ public class AlertService {
     private final AlertRepository alertRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
-    public List<Alert> getActiveAlerts() {
-        return alertRepository.findByAcknowledgedFalseOrderByTimestampDesc();
+    public List<AlertResponse> getActiveAlerts() {
+        return alertRepository.findByAcknowledgedFalseOrderByTimestampDesc()
+                .stream().map(AlertService::toResponse).toList();
     }
 
-    public List<Alert> getAlertsForPatient(String fhirPatientId) {
-        return alertRepository.findByFhirPatientIdOrderByTimestampDesc(fhirPatientId);
+    public List<AlertResponse> getAlertsForPatient(String fhirPatientId) {
+        return alertRepository.findByFhirPatientIdOrderByTimestampDesc(fhirPatientId)
+                .stream().map(AlertService::toResponse).toList();
     }
 
-    public Alert acknowledgeAlert(Long alertId) {
-        return alertRepository.findById(alertId).map(alert -> {
+    @Transactional
+    public AlertResponse acknowledgeAlert(Long alertId) {
+        return alertRepository.findByIdWithPatient(alertId).map(alert -> {
             alert.setAcknowledged(true);
-            return alertRepository.save(alert);
+            return toResponse(alertRepository.save(alert));
         }).orElse(null);
+    }
+    public static AlertResponse toResponse(Alert a) {
+        return AlertResponse.builder()
+                .id(a.getId())
+                .fhirPatientId(a.getFhirPatientId())
+                .patientName(a.getPatientName())
+                .bedNumber(a.getBedNumber())
+                .alertMessage(a.getAlertMessage())
+                .timestamp(a.getTimestamp())
+                .acknowledged(a.isAcknowledged())
+                .patientId(a.getPatient() != null ? a.getPatient().getId() : null)
+                .build();
     }
 
     public void sendAlertToFrontend(Alert alert) {

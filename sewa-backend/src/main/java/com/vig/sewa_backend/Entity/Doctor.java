@@ -22,8 +22,9 @@ public class Doctor {
     private String email;
 
     @Column(nullable = false)
-    private String password;   // BCrypt hashed
+    private String password;
 
     @OneToMany(mappedBy = "doctor", fetch = FetchType.LAZY)
     private List<Patient> patients;
+
 }

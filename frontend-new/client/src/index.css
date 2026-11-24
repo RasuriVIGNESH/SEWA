@@ -1,0 +1,106 @@
+/*
+ * SEWA design system — Quiet Clinical Command.
+ * Movement: Scandinavian service design for a high-trust ICU workspace.
+ * Principles: evidence beside action; calm hierarchy; explicit system state; coral only for risk.
+ * Signature color: Signal Teal #0B8F87. Display: Manrope. Body: DM Sans.
+ */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: #0b8f87;
+  --color-chart-2: #3975b9;
+  --color-chart-3: #c98225;
+  --color-chart-4: #d85b52;
+  --color-chart-5: #865e9f;
+  --color-ice: #f4f7fa;
+  --color-navy: #0b1f33;
+  --color-navy-light: #143654;
+  --color-ink: #16283b;
+  --color-line: #dfe8ef;
+  --color-teal: #0b8f87;
+  --color-teal-dark: #08736d;
+  --color-signal-teal: #58d6c1;
+  --color-blue: #3975b9;
+  --color-blue-dark: #285b94;
+  --color-amber: #c98225;
+  --color-amber-dark: #9b6015;
+  --color-amber-light: #f0c57d;
+  --color-coral: #d85b52;
+  --color-coral-dark: #a9423d;
+  --color-coral-light: #f2a39b;
+  --color-purple: #865e9f;
+  --color-purple-dark: #68467f;
+  --shadow-card: 0 5px 18px rgba(11, 31, 51, 0.045), 0 1px 2px rgba(11, 31, 51, 0.04);
+  --shadow-card-hover: 0 16px 38px rgba(11, 31, 51, 0.10), 0 3px 8px rgba(11, 31, 51, 0.05);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.8rem;
+  --background: #ffffff;
+  --foreground: #16283b;
+  --card: #ffffff;
+  --card-foreground: #16283b;
+  --popover: #ffffff;
+  --popover-foreground: #16283b;
+  --primary: #0b8f87;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f7fa;
+  --secondary-foreground: #16283b;
+  --muted: #eef3f7;
+  --muted-foreground: #718194;
+  --accent: #e7f5f3;
+  --accent-foreground: #08736d;
+  --destructive: #d85b52;
+  --destructive-foreground: #ffffff;
+  --border: #dfe8ef;
+  --input: #dfe8ef;
+  --ring: #0b8f87;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html { font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif; background: #f4f7fa; }
+  body { @apply bg-ice text-foreground antialiased; margin: 0; min-width: 320px; }
+  button, input { font: inherit; }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href] { cursor: pointer; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid rgba(11, 143, 135, 0.27); outline-offset: 2px; }
+  ::selection { background: rgba(11, 143, 135, 0.18); color: #0b1f33; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #f4f7fa; }
+  ::-webkit-scrollbar-thumb { background: #c9d5df; border: 3px solid #f4f7fa; border-radius: 999px; }
+}
+
+@layer utilities {
+  .font-display { font-family: "Manrope", ui-sans-serif, system-ui, sans-serif; }
+  .text-balance { text-wrap: balance; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
+}

@@ -1,169 +1,259 @@
-<div align="center">
+# SEWA — Sepsis Early Warning Agent
 
-<h1>🏥 SEWA</h1>
-<h3>Sepsis Early Warning Agent</h3>
+SEWA is an **educational, non-clinical prototype** that processes simulated or de-identified ICU vital-sign data and displays risk alerts through a web dashboard.
 
-<p>Real-time ICU monitoring system that detects early signs of sepsis and alerts doctors before it becomes life-threatening.</p>
+The project demonstrates event-driven backend development, service-to-service communication, real-time dashboard updates, and containerized local execution.
 
-![Java](https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
-![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=for-the-badge&logo=apache-kafka&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+> **Important:** SEWA is not a medical device and must not be used for clinical diagnosis, treatment, or patient-care decisions. The project is intended only for learning, software engineering experimentation, and research prototyping.
 
-<br/>
+## Project goals
 
-</div>
+SEWA explores how a distributed application can:
 
----
+- Receive simulated or de-identified patient-vital data.
+- Process events through a message-broker pipeline.
+- Send data to a separate prediction service.
+- Persist application data.
+- Deliver live dashboard updates.
+- Display non-clinical risk notifications for demonstration purposes.
 
-## 📌 Overview
+## Architecture
 
-Sepsis kills ~11 million people annually. In ICU settings, every hour of delayed treatment increases mortality by ~7%. SEWA is an end-to-end clinical decision support system that:
+The prototype contains the following logical components:
 
-- Streams live patient vitals from bedside monitors (or a dataset simulator in development)
-- Runs an XGBoost ML model trained on 1M+ ICU records to predict sepsis risk in real-time
-- Pushes instant alerts to the doctor's dashboard when sepsis is detected
+1. **Data simulator** — generates or replays sample vital-sign events.
+2. **FHIR/data gateway** — represents the data-ingestion boundary for the prototype.
+3. **Kafka** — transports events between services.
+4. **Spring Boot backend** — provides APIs, authentication, persistence, and application workflows.
+5. **Python prediction service** — receives prepared data and returns the project’s configured prediction output.
+6. **React dashboard** — displays patient information and live notifications.
+7. **PostgreSQL** — stores application data.
+8. **WebSockets** — deliver live updates to connected dashboard clients.
 
----
+```text
+Simulated data
+      |
+      v
+Data/FHIR gateway
+      |
+      v
+Apache Kafka  --->  Python prediction service
+      |
+      v
+Spring Boot backend  --->  PostgreSQL
+      |
+      v
+WebSocket notifications
+      |
+      v
+React dashboard
+```
 
-## 🏗️ System Architecture and data flow
+The architecture is designed for learning and demonstration. It does not represent a production clinical architecture.
 
-<img width="1680" height="720" alt="design" src="https://github.com/user-attachments/assets/24379aed-a1a6-4946-866d-d59a9135981d" />
+## Technology stack
 
-
-
-### Environment Switch
-
-| Mode | Data Source |
-|------|-------------|
-| `DATA_SOURCE_MODE=simulator` | Python simulator replays MIMIC-IV dataset via HAPI FHIR |
-| `DATA_SOURCE_MODE=hardware` | Real ICU monitors → Device Gateway → HAPI FHIR |
-
-Zero code change downstream — one environment variable.
-
----
-
-## 🔬 ML Model
-
-| Attribute | Detail |
-|-----------|--------|
-| Algorithm | XGBoost |
-| Dataset | PhysioNet MIMIC-IV derived (~1M rows, 40+ features) |
-| AUROC | ~0.87 |
-| Recall (sensitivity) | ≥ 0.85 (tuned — missing sepsis is worse than false alarm) |
-| Explainability | SHAP top-3 contributors per alert |
-| Scoring | qSOFA + SOFA computed alongside ML prediction |
-
-**Input features:** Heart Rate, SpO₂, Temperature, SBP, DBP, MAP, Respiratory Rate + 26 lab values + engineered rolling-window trends (1h, 3h, 6h) + shock index + PaO₂/FiO₂ ratio
-
-**Alert trigger:** `risk_score > threshold` OR `qSOFA ≥ 2 AND SOFA ≥ 2`
-
----
-
-## 🧩 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, Vite, Tailwind CSS, WebSocket (STOMP) |
-| Backend | Spring Boot 3, Spring Security, JWT, Spring Data JPA |
-| ML Service | FastAPI, XGBoost, SHAP, scikit-learn, aiokafka |
-| Clinical Standard | HAPI FHIR R4 (HL7 FHIR Observation resources) |
+| Area | Technology |
+|---|---|
+| Backend | Java, Spring Boot, Spring Security, REST APIs |
+| Prediction service | Python, FastAPI |
+| Frontend | React, JavaScript |
 | Database | PostgreSQL |
-| Message Bus | Apache Kafka |
-| Simulator | Python, pandas, MIMIC-IV dataset |
-| DevOps | Docker, Docker Compose |
-| API Docs | Swagger / OpenAPI |
+| Messaging | Apache Kafka |
+| Real-time communication | WebSockets |
+| Data format/integration exploration | HAPI FHIR |
+| Local infrastructure | Docker, Docker Compose |
+| Documentation | REST API documentation where configured |
 
----
+Use the exact libraries and model name that are present in the code. Do not describe a model as XGBoost, LSTM, or another algorithm unless it is implemented and reproducible in this repository.
 
-## 🚀 Getting Started
+## Repository structure
 
-### Prerequisites
+The current repository is organized into the following top-level areas:
 
-- Java 21+
-- Python 3.11+
-- Docker & Docker Compose
-- Node.js 20+
-
-### 1. Start Infrastructure
-
-```bash
-# Start HAPI FHIR Server + PostgreSQL + Kafka
-docker-compose up -d
+```text
+.
+├── ICU vitals simulater/   # Simulated or replayed vital-sign data
+├── MLservice/              # Python prediction service
+├── diagrams/               # Architecture and design diagrams
+├── frontend/               # React dashboard
+├── sewa-backend/           # Java/Spring Boot backend
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
 
-### 2. Run Spring Boot Backend
+If a directory name changes, update this section and every setup command in the same commit.
+
+## Prerequisites
+
+Install the following before running the project:
+
+- Java version required by the `sewa-backend` build file.
+- Python version required by `MLservice` dependency files.
+- Node.js and npm version required by `frontend/package.json`.
+- Docker and Docker Compose.
+- PostgreSQL, Kafka, and any other infrastructure listed in the Docker Compose file.
+
+Check the repository build files before choosing versions. The commands below assume the standard tools are available on your PATH.
+
+## Configuration and secrets
+
+Never commit real passwords, OAuth secrets, JWT keys, API keys, or cloud credentials.
+
+Create local environment files from the example files if they exist. Typical configuration areas may include:
+
+```text
+DATABASE_URL
+DATABASE_USERNAME
+DATABASE_PASSWORD
+JWT_SECRET
+KAFKA_BOOTSTRAP_SERVERS
+PREDICTION_SERVICE_URL
+CORS_ALLOWED_ORIGINS
+```
+
+Use the exact variable names expected by the source code. If no example environment file exists, create one as part of the repository cleanup and document every required variable without including real secret values.
+
+## Local setup
+
+### 1. Clone the repository
 
 ```bash
-cd backend
+git clone https://github.com/RasuriVIGNESH/SEWA.git
+cd SEWA
+```
+
+### 2. Start infrastructure
+
+From the directory containing the Docker Compose file, run:
+
+```bash
+docker compose up -d
+```
+
+Confirm that the required infrastructure containers are healthy before starting the application services.
+
+### 3. Start the Spring Boot backend
+
+Open the backend directory:
+
+```bash
+cd sewa-backend
+```
+
+Use the build tool and wrapper that are actually present in this directory. For Maven projects, the command is usually:
+
+```bash
 ./mvnw spring-boot:run
-# Runs on http://localhost:8080
-# Swagger UI: http://localhost:8080/swagger-ui.html
 ```
 
-### 3. Run Python Simulator
+If the repository does not contain `mvnw`, use the project’s documented Maven command after confirming the required Java version.
+
+### 4. Start the prediction service
+
+Open a second terminal and enter the prediction-service directory:
 
 ```bash
-cd simulator
-pip install -r requirements.txt
-
-# Place your dataset at simulator/data/dataset.csv
-python fhir_simulator.py
-# Streams vitals for 3 patients every 2 seconds
+cd MLservice
 ```
 
-### 4. Run React Frontend
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Install the dependencies listed by the repository:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start the service using the entry point defined in the directory. For example:
+
+```bash
+python main.py
+```
+
+Do not keep this command in the README if the actual entry file has a different name. Update it to match the code.
+
+### 5. Start the frontend
+
+Open a third terminal and enter the frontend directory:
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# Runs on http://localhost:5173
 ```
 
-### 5. Run FastAPI ML Service
+Open the local URL printed by the frontend development server.
+
+### 6. Start the simulator
+
+Open a fourth terminal and enter the simulator directory:
 
 ```bash
-cd ml_service
-pip install -r requirements.txt
-python main.py
-# Runs on http://localhost:8000
+cd "ICU vitals simulater"
 ```
 
----
+Install its dependencies according to the files in that directory and start the simulator using the actual entry point documented by the code.
 
-## 🔐 API Endpoints
+The simulator should use only simulated or authorized de-identified data. Do not place real patient information in this repository.
 
-Full API documentation available at `http://localhost:8080/swagger-ui.html` after running the backend.
+## Application flow
 
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/auth/register` | Register doctor, returns JWT | Public |
-| POST | `/api/auth/login` | Login, returns JWT | Public |
-| GET | `/api/patients` | All patients with details | 🔒 |
-| POST | `/api/patients` | Create patient | 🔒 |
-| PATCH | `/api/patients/{id}` | Update patient | 🔒 |
-| POST | `/api/patients/assign` | Assign doctor to patient | 🔒 |
-| POST | `/api/patients/{id}/discharge` | Discharge patient | 🔒 |
-| GET | `/api/doctors` | All doctors with patient counts | 🔒 |
-| GET | `/api/doctors/{id}/patients` | Doctor's assigned patients | 🔒 |
+1. The simulator generates or replays a vital-sign event.
+2. The ingestion layer validates and forwards the event.
+3. Kafka transports the event to the configured consumers.
+4. The Spring Boot backend and prediction service process the event according to the configured application flow.
+5. The backend stores relevant application data in PostgreSQL.
+6. The dashboard receives a live notification through WebSockets.
+7. The React interface displays the event and the configured non-clinical risk output.
 
-**WebSocket:** `ws://localhost:8080/ws` → subscribe `/topic/vitals/{fhirPatientId}`
+## API documentation
 
----
+When the backend is running, open the API documentation URL configured by the project. If Swagger/OpenAPI is enabled, it is commonly available at a path such as:
 
-## 🩺 Clinical Context
+```text
+http://localhost:8080/swagger-ui/index.html
+```
 
-SEWA implements the **Sepsis-3 definition**:
-- Sepsis = life-threatening organ dysfunction caused by dysregulated host response to infection
-- Organ dysfunction detected by SOFA score increase ≥ 2 points from baseline
-- qSOFA used for rapid bedside assessment (no labs needed)
+Verify the actual path in the source configuration before publishing it as the official URL.
 
-The ML model is designed for **high recall** — in a medical context, a false alarm is acceptable; a missed sepsis case is not.
+Document the currently implemented endpoints in this README or in a separate `API.md` file. Each endpoint should include its method, path, purpose, request body, response body, authentication requirement, and example error response.
 
----
-</div>
+## Testing
+
+Document the commands that are actually supported by the current codebase. At minimum, add tests for:
+
+- Input validation.
+- Authentication and authorization.
+- Core backend service logic.
+- Database repository behavior.
+- Prediction-service request validation.
+- Frontend loading, error, and empty states.
+- WebSocket connection or notification behavior where practical.
+
+Before claiming that tests pass, run them locally and configure GitHub Actions to run the same commands.
+
+## Current limitations
+
+- The system is an educational prototype, not a clinical product.
+- Input data is simulated or de-identified.
+- Prediction outputs depend on the configured service and available model implementation.
+- Local setup requires multiple services and may require manual environment configuration.
+- No clinical decision should be made from the application output.
+- Performance, accuracy, and reliability claims should be treated as experimental unless supported by a reproducible evaluation procedure.
+
+## Responsible use
+
+Do not upload real patient data, personally identifiable information, medical records, credentials, or secrets to this repository or its issue tracker.
+
+Any future evaluation should document the dataset source, licensing, preprocessing, train/test split, evaluation metrics, model version, limitations, and reproducibility steps.
+
+## License
+
+This project is available under the license included in the repository.

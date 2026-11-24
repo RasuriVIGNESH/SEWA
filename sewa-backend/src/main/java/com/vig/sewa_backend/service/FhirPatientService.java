@@ -13,12 +13,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * All FHIR Patient resource operations in one place.
- * - Fetch all patients from FHIR
- * - Create a patient in FHIR (returns the assigned FHIR ID)
- * - Check if FHIR server is reachable
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,10 +22,6 @@ public class FhirPatientService {
 
     // ── CONNECTIVITY CHECK ────────────────────────────────────────────────────
 
-    /**
-     * Attempts a lightweight metadata call to check if FHIR is online.
-     * Returns true if reachable, false otherwise.
-     */
     public boolean isFhirReachable() {
         try {
             fhirClient.capabilities().ofType(CapabilityStatement.class).execute();

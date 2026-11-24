@@ -1,0 +1,30 @@
+SEWA XGBoost Sepsis Model Evaluation
+============================================================
+Evaluation type: Patient-level holdout test set
+Patient-level split random state: 42
+Training patients: 32268
+Test patients: 8068
+Test rows: 310997
+Decision threshold: 0.45
+
+Accuracy: 0.654891
+Balanced accuracy: 0.645037
+Precision: 0.030632
+Recall/Sensitivity: 0.634839
+F1-score: 0.058444
+ROC-AUC: 0.698496
+PR-AUC: 0.046379
+
+Confusion matrix:
+[[200338 105412]
+ [  1916   3331]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+   No sepsis       0.99      0.66      0.79    305750
+      Sepsis       0.03      0.63      0.06      5247
+
+    accuracy                           0.65    310997
+   macro avg       0.51      0.65      0.42    310997
+weighted avg       0.97      0.65      0.78    310997
